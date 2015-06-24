@@ -1,6 +1,30 @@
 import numpy as np
 import cv2
 
+def compare_pts(set1, img1, set2, img2):
+	if len(set1) > len(set2):
+		a = set1
+		b = set2
+	else:
+		a = set2
+		b = set1
+
+	total_similar = 0
+
+	for p1 in a:
+		p1 = p1[0]
+		roi1 = img1[p1[0]-4:p1[0]+4, p1[1]-4:p1[1]+4]
+		
+		if cv2.mean(roi1) == (0.0, 0.0, 0.0, 0.0):
+			pass
+		for p2 in b:
+			p2 = p2[0]
+			roi2 = img2[p2[0]-4:p2[0]+4, p2[1]-4:p2[1]+4]
+
+	return total_similar / len(a)
+
+
+
 cap = cv2.VideoCapture('/Users/jacobbrunson/Research/newmov.mov')
 cap.read()
 color = np.random.randint(0, 255, (100, 3))
@@ -51,17 +75,25 @@ while True:
 			pic_gray = cv2.cvtColor(pic, cv2.COLOR_BGR2GRAY)
 			sift = cv2.SIFT()
 			kp1, desc1 = sift.detectAndCompute(pic_gray, None)
-			hist1 = cv2.normalize(cv2.calcHist([pic], [0, 1], None, [256, 256], [0, 256, 0, 256]))
-
+			hist1 = cv2.normalize(cv2.calcHist([pic_hsv], [0, 1], None, [256, 256], [0, 256, 0, 256]))
+			tmp = cv2.goodFeaturesToTrack(pic_gray, mask=None, maxCorners=5, qualityLevel=0.5, minDistance=7, blockSize=7)
+			
 			bf = cv2.BFMatcher()
 
 			best_matches = 0
 			best_matches_i = 0
 			best_hist = 0
 			best_hist_i = 0
+			best_pts = 0
+			best_pts_i = 0
 			for i in range(len(unique)):
+				pts = unique[i]["pts"]
+				asdf = compare_pts(tmp, pic, pts, unique[i]["pics"][len(unique[i]["pics"])-1])
 				matches = bf.knnMatch(desc1, unique[i]["desc"], k=2)
 				d = cv2.compareHist(hist1, unique[i]["hist"], cv2.cv.CV_COMP_CORREL)
+				if asdf > best_pts:
+					best_pts = asdf
+					best_pts_i = i
 				if d > best_hist:
 					best_hist = d
 					best_hist_i = i
@@ -73,25 +105,32 @@ while True:
 					best_matches = len(good)
 					best_matches_i = i
 
+
 			if not desc1 is None:
-				if best_matches < 5 and best_hist < 0.6:
-					unique.append({"desc": desc1, "hist": hist1, "pics":[pic]})
+				if float(best_matches)/float(len(kp1)) < 0.1 or best_hist < 0.3:
+					unique.append({"desc": desc1, "hist": hist1, "pts": tmp, "pics":[pic]})
 					print "Total unique objects" + str(len(unique))
 				else:
 					if best_matches / 10 > best_hist:
 						s = best_hist_i
 					else:
 						s = best_hist_i
-					print best_matches, best_hist
 					unique[s]["desc"] = desc1
 					unique[s]["hist"] = hist1
+					unique[s]["pts"] = tmp
 					unique[s]["pics"].append(pic)
 
 
-			tmp = cv2.goodFeaturesToTrack(old_gray, mask=roi, maxCorners=5, qualityLevel=0.5, minDistance=7, blockSize=7)
+			
+			# Convert from ROI space to image space
+			if not tmp is None:
+				for j in range(len(tmp)):
+					tmp[j][0][0] += x
+					tmp[j][0][1] += y
+
 			if p0 is None:
 				p0 = tmp
-			else:
+			elif not tmp is None:
 				p0 = np.concatenate((p0, tmp))
 		ret, frame = cap.read()
 	else:
