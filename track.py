@@ -75,7 +75,7 @@ while True:
 			pic_gray = cv2.cvtColor(pic, cv2.COLOR_BGR2GRAY)
 			sift = cv2.SIFT()
 			kp1, desc1 = sift.detectAndCompute(pic_gray, None)
-			hist1 = cv2.normalize(cv2.calcHist([pic_hsv], [0, 1], None, [256, 256], [0, 256, 0, 256]))
+			hist1 = cv2.normalize(cv2.calcHist([pic_hsv], [0, 1], None, [180, 255], [0, 180, 0, 255]))
 			tmp = cv2.goodFeaturesToTrack(pic_gray, mask=None, maxCorners=5, qualityLevel=0.5, minDistance=7, blockSize=7)
 			
 			bf = cv2.BFMatcher()
@@ -88,19 +88,20 @@ while True:
 			best_pts_i = 0
 			for i in range(len(unique)):
 				pts = unique[i]["pts"]
-				asdf = compare_pts(tmp, pic, pts, unique[i]["pics"][len(unique[i]["pics"])-1])
+				#asdf = compare_pts(tmp, pic, pts, unique[i]["pics"][len(unique[i]["pics"])-1])
 				matches = bf.knnMatch(desc1, unique[i]["desc"], k=2)
 				d = cv2.compareHist(hist1, unique[i]["hist"], cv2.cv.CV_COMP_CORREL)
-				if asdf > best_pts:
-					best_pts = asdf
-					best_pts_i = i
+				#if asdf > best_pts:
+					#best_pts = asdf
+					#best_pts_i = i
 				if d > best_hist:
 					best_hist = d
 					best_hist_i = i
 				good = []
-				for m, n in matches:
-					if m.distance < n.distance*0.75:
-						good.append([m])
+				if len(matches) > 0 and len(matches[0]) > 1:
+					for m, n in matches:
+						if m.distance < n.distance*0.75:
+							good.append([m])
 				if len(good) > best_matches:
 					best_matches = len(good)
 					best_matches_i = i
