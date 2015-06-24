@@ -2,28 +2,52 @@ import numpy as np
 import cv2
 
 def compare_pts(set1, img1, set2, img2):
+	if set1 is None or set2 is None:
+		return 0
+
 	if len(set1) > len(set2):
 		a = set1
+		imga = img1
 		b = set2
+		imgb = img2
 	else:
 		a = set2
+		imga = img2
 		b = set1
+		imgb = img1
 
 	total_similar = 0
 
+	imga = cv2.cvtColor(imga, cv2.COLOR_BGR2HSV)
+	imgb = cv2.cvtColor(imgb, cv2.COLOR_BGR2HSV)
+
 	for p1 in a:
 		p1 = p1[0]
-		roi1 = img1[p1[0]-4:p1[0]+4, p1[1]-4:p1[1]+4]
-		
-		if cv2.mean(roi1) == (0.0, 0.0, 0.0, 0.0):
-			pass
+		minX = max(p1[0]-4, 0)
+		maxX = min(p1[0]+4, len(imga[0]))
+		minY = max(p1[1]-4, 0)
+		maxY = min(p1[1]+4, len(imga))
+		roi1 = imga[minY:maxY, minX:maxX]
+		mean1 = cv2.mean(roi1)
 		for p2 in b:
 			p2 = p2[0]
-			roi2 = img2[p2[0]-4:p2[0]+4, p2[1]-4:p2[1]+4]
+			minX = max(p2[0]-4, 0)
+			maxX = min(p2[0]+4, len(imga[0]))
+			minY = max(p2[1]-4, 0)
+			maxY = min(p2[1]+4, len(imga))
+			roi2 = imgb[minY:maxY, minX:maxX]
+			mean2 = cv2.mean(roi2)
+			if abs(mean1[0] - mean2[0]) < 5 and abs(mean1[1] - mean2[1]) < 5:
+				total_similar += 1
+	return total_similar
 
-	return total_similar / len(a)
-
-
+def computeProduct(p, a, b):
+	if a[0] == b[0]:
+		k = 0
+	else:
+		k = (a[1] - b[1]) / (a[0] - b[0])
+	j = a[1] - k * a[0]
+	return k * p[0] - p[1] + j
 
 cap = cv2.VideoCapture('/Users/jacobbrunson/Research/newmov.mov')
 cap.read()
@@ -67,6 +91,9 @@ while True:
 
 		for contour in contours:
 			x, y, w, h = cv2.boundingRect(contour)
+			yyy = cv2.minAreaRect(contour)
+			zzz = cv2.cv.BoxPoints(yyy)
+
 			roi = np.zeros(old_gray.shape, np.uint8)
 			roi[y:(y+h), x:(x+w)] = 255
 			
@@ -75,9 +102,34 @@ while True:
 			pic_gray = cv2.cvtColor(pic, cv2.COLOR_BGR2GRAY)
 			sift = cv2.SIFT()
 			kp1, desc1 = sift.detectAndCompute(pic_gray, None)
-			hist1 = cv2.normalize(cv2.calcHist([pic_hsv], [0, 1], None, [180, 255], [0, 180, 0, 255]))
+
+
+
+
+
+			wow_pixels = []
+
+			for q in range(y, y+h):
+				for r in range(x, x+w):
+
+					p = pic_hsv[q-y][r-x]
+					pro = []
+					
+					for i in range(4):
+						pro.append(computeProduct((r,q), zzz[i], zzz[(i + 1) % 4]))
+					if ((pro[0] * pro[2]) < 0) and ((pro[1] * pro[3]) < 0):
+						#print q,r
+						wow_pixels.append([p])
+					else:
+						pass
+						#pic[q-y][r-x] = [0, 0, 0]
+
+			wow_pixels = np.array(wow_pixels)
+
+
+
+			hist1 = cv2.normalize(cv2.calcHist([wow_pixels], [0, 1], None, [180, 255], [0, 180, 0, 255]))
 			tmp = cv2.goodFeaturesToTrack(pic_gray, mask=None, maxCorners=5, qualityLevel=0.5, minDistance=7, blockSize=7)
-			
 			bf = cv2.BFMatcher()
 
 			best_matches = 0
@@ -88,12 +140,12 @@ while True:
 			best_pts_i = 0
 			for i in range(len(unique)):
 				pts = unique[i]["pts"]
-				#asdf = compare_pts(tmp, pic, pts, unique[i]["pics"][len(unique[i]["pics"])-1])
+				asdf = compare_pts(tmp, pic, pts, unique[i]["pics"][len(unique[i]["pics"])-1])
 				matches = bf.knnMatch(desc1, unique[i]["desc"], k=2)
 				d = cv2.compareHist(hist1, unique[i]["hist"], cv2.cv.CV_COMP_CORREL)
-				#if asdf > best_pts:
-					#best_pts = asdf
-					#best_pts_i = i
+				if asdf > best_pts:
+					best_pts = asdf
+					best_pts_i = i
 				if d > best_hist:
 					best_hist = d
 					best_hist_i = i
@@ -108,8 +160,12 @@ while True:
 
 
 			if not desc1 is None:
-				if float(best_matches)/float(len(kp1)) < 0.1 or best_hist < 0.3:
-					unique.append({"desc": desc1, "hist": hist1, "pts": tmp, "pics":[pic]})
+				if tmp is None:
+					aaa = None
+				else:
+					aaa = tmp.copy()
+				if float(best_matches)/float(len(kp1)) < 0.1 or best_hist < 0.4 or best_pts <= 1:
+					unique.append({"desc": desc1, "hist": hist1, "pts": aaa, "pics":[pic]})
 					print "Total unique objects" + str(len(unique))
 				else:
 					if best_matches / 10 > best_hist:
@@ -118,7 +174,7 @@ while True:
 						s = best_hist_i
 					unique[s]["desc"] = desc1
 					unique[s]["hist"] = hist1
-					unique[s]["pts"] = tmp
+					unique[s]["pts"] = aaa
 					unique[s]["pics"].append(pic)
 
 
@@ -165,6 +221,9 @@ while True:
 	p0 = good_new.reshape(-1, 1, 2)
 
 cv2.destroyAllWindows()
+
+unique = [x for x in unique if len(x["pics"]) > 10]
+
 print "FINAL COUNT: %d" % len(unique)
 for i in range(len(unique)):
 	for j in range(len(unique[i]["pics"])):
